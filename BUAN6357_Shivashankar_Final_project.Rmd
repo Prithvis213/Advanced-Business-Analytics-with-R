@@ -1,0 +1,452 @@
+---
+title: "BUAN6357 Final Project"
+author: "Prithvi Shivashankar"
+date: "11/16/2019"
+output:
+  pdf_document: default
+  html_document: default
+  word_document: default
+editor options:
+  chunk_output_type: inline
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## R Markdown
+
+This is an R Markdown document. This Markdown file consists of the feature set split into test and train as well as a sample of the main feature set to run the Boruta algorithm to check for feature importance. It also has the main classification Machine Learning Algorithms as well as the Ensemble Learning Algorithms.   
+
+## Initial Loading of packages: 
+__Required Packages to be loaded:__
+```{r packages}
+if(!require('pacman'))install.packages('pacman')
+pacman::p_load(dplyr, tidyverse, corrplot, ggplot2, mice, VIM, Boruta, Amelia,caret, randomForest, caTools, ROCR, ggplot2,epiR, pROC, e1071,LiblineaR, glmnet, gains, binaryLogic, SuperLearner, ranger, SuperLearner,kernlab, arm, ipred, neuralnet, nnet, caretEnsemble, ROSE, gbm)
+
+search()
+theme_set(theme_classic())
+```
+
+I have loaded a sample dataset in this case so as to check for feature importance through Boruta. I have used a sample to rduce on the computation time for the same. The sample is representative of the population. 
+
+## Sample Dataset Loading: 
+__Sampled dataset cosisting of all features:__
+```{r read, echo=FALSE}
+sample_feature <- read.csv("sample_feature.csv", header=TRUE, sep=",")
+
+str(sample_feature)
+```
+ I have checked the structure as well as the summary and in this case, I have loaded variables without any missing values. I have used MICE alogrithm to fill the missing values in the application dataset.  
+
+```{r Sample Feature summary, echo=FALSE}
+summary(sample_feature)
+```
+
+All the features cannot be used to run the model due to the computation complexity as well as the time factor. Hence, I found the Boruta feature selection package, which computes the most important features that contribute to the highest variation in the "TARGET" variable and those will be the variables that will be used to run all the models to retreive the best set of predictions.
+
+## Boruta Feature Selection: 
+__Boruta to pick most important features:__
+```{r Boruta, echo=FALSE}
+sample_feature1 <- sample_feature[sample(nrow(sample_feature),5000),]
+b_model <- Boruta(TARGET ~ ., data = sample_feature1) 
+```
+
+I have used a sample of the dataset to compute the feature importance through Boruta as the number of iterations are too high and time consuming for a dataset of this size. 
+
+__Boruta plot and list of important features:__
+```{r Boruta selection, echo=FALSE}
+b_model
+plotImpHistory(b_model, xlab = "", xaxt = "n")
+k <-lapply(1:ncol(b_model$ImpHistory),function(i)
+  b_model$ImpHistory[is.finite(b_model$ImpHistory[,i]),i])
+names(k) <- colnames(b_model$ImpHistory)
+Labels <- sort(sapply(k,median))
+axis(side = 1,las=2,labels = names(Labels),
+       at = 1:ncol(b_model$ImpHistory), cex.axis = 0.7)
+
+getSelectedAttributes(b_model, withTentative = F)
+
+boruta_df <- attStats(b_model)
+print(boruta_df)
+```
+
+Based on the 99 iterations performed by the Boruta package, I retreived around 35 important variables, which in the dataset shows as decision is "Confirmed". 
+
+I then load on these important variables into a separate dataset and then use these in the final feature dataset. 
+
+## Variables that are contributing to most change on the "TARGET" variable 
+__Most important Features:__
+
+```{r Features for model, echo=FALSE}
+feature_df <- subset(boruta_df, decision == "Confirmed")
+feature_df
+```
+
+The above features are the ones that have been ranked important by the Boruta algorithm. I have then loaded the entire dataset to use these features to run certain models such as Logistic regression 
+
+## Full feature set with all records loaded
+
+__Full Dataframe loaded:__
+
+```{r total feature import, echo=FALSE}
+final_feature <- read.table(unz("final_feature.zip", "final_feature.csv"), header=TRUE, sep=",")
+```
+
+```{r final feature strcuture, echo=FALSE}
+str(final_feature)
+```
+
+## Full feature and sample set with the most important features
+
+__Subset of final feature set with the important features from Boruta:__
+```{r important feature import, echo=FALSE}
+sample_feature1 <- sample_feature[ , (colnames(sample_feature) %in% row.names(feature_df))]
+
+final_feature1 <- final_feature[ , (colnames(final_feature) %in% row.names(feature_df))]
+```
+
+
+After loading and checking the structure as well as the summary of the final features set with the important variables, I have added a few extra variables to the final feature set based on my own previous exploratory data analysis. The TARGET Variable is FALSE for people who do not have payment difficulties and TRUE for people who do have.  
+
+From my prelimnary EDA, I had observed that people who's address mentioned at the time of loan application does not match the orignial address are more likely to default. In addition to that, EXT_SOURCE_1 and EXT_SOURCE_3 which are scores of applicants from external data sources would also have a big role to play since EXT_SOURCE_2 was a very important feature. I have also added the count of the number of credit cards, previous application counts, bureau counts as well as the income amount and whether the customer's phone is reachable or not. These from my readings about financial loan applications have a big role to play in deciding whether a person is capable to repaying the loa or not.     
+
+
+__Feature Addition:__
+```{r Feature addition, echo=FALSE}
+X <- final_feature$X
+TARGET <- final_feature$TARGET
+EXT_SOURCE1 <- final_feature$EXT_SOURCE_1
+EXT_SOURCE3 <- final_feature$EXT_SOURCE_3
+REG_REGION_NOT_LIVE_REGION <- final_feature$REG_REGION_NOT_LIVE_REGION
+REG_REGION_NOT_WORK_REGION <- final_feature$REG_REGION_NOT_WORK_REGION
+FLAG_CONT_MOBILE <- final_feature$FLAG_CONT_MOBILE
+bureau_count <- final_feature$COUNT.bureau.
+previous_application_count <- final_feature$COUNT.previous_application.
+credit_card_count <- final_feature$COUNT.credit_card_balance.
+gender <- final_feature$CODE_GENDER
+AMT_INCOME_TOTAL <- final_feature$AMT_INCOME_TOTAL
+AMT_CREDIT <- final_feature$AMT_CREDIT
+MEAN.previous_application.MEAN.installment_payments.NUM_INSTALMENT_NUMBER <- final_feature$MEAN.previous_application.MEAN.installment_payments.NUM_INSTALMENT_NUMBER..
+final_feature1 <- cbind(TARGET, X, EXT_SOURCE1, EXT_SOURCE3, REG_REGION_NOT_LIVE_REGION, REG_REGION_NOT_WORK_REGION, FLAG_CONT_MOBILE, bureau_count, previous_application_count, credit_card_count, gender, AMT_INCOME_TOTAL, AMT_CREDIT, MEAN.previous_application.MEAN.installment_payments.NUM_INSTALMENT_NUMBER, final_feature1)
+
+```
+
+
+I have also deleted some features from the important feature set as the Boruta algorithm has calculated the SUM and the MIN for the same feature as an important variable. Since those 2 would be perfectly correlated, I have used the MIN as from a financial standpoint, the SUM of  a variable does not really make much sense as the minimum amount a customer would pay goes a long way in deciding whether they should be given the loan or not. 
+
+__Feature Deletion:__
+```{r feature deletion, echo=FALSE}
+final_feature1 <- select(final_feature1,-contains("SUM.bureau") ,-contains("MEAN.bureau.DAYS")
+,-contains("gender")
+,-contains("SUM.previous_application.MEAN.credit_card_balance.AMT_BALANCE..")
+,-contains("SUM.previous_application.MAX.credit_card_balance.CNT_DRAWINGS_CURRENT..")
+,-contains("SUM.previous_application.MAX.credit_card_balance.AMT_RECEIVABLE_PRINCIPAL..")
+,-contains("SUM.previous_application.MEAN.credit_card_balance.AMT_TOTAL_RECEIVABLE..")
+,-contains("SUM.previous_application.MEAN.credit_card_balance.AMT_RECIVABLE..")
+,-contains("MAX.previous_application.SUM.credit_card_balance.CNT_DRAWINGS_CURRENT..")
+)
+```
+
+
+## Final Feature Structure: 
+```{r feature summary1, echo=FALSE}
+summary(sample_feature1)
+summary(final_feature1)
+```
+
+## Final Feature test train split
+
+__Final Feature test train split:__
+```{r train test split, echo=FALSE}
+set.seed(123)   
+sample <- sample.split(final_feature1,SplitRatio = 0.75) 
+feature_train<- subset(final_feature1,sample ==TRUE)
+feature_test <- subset(final_feature1, sample==FALSE)
+```
+
+After splitting the final feature set into test and train, I first ran the logistic regression model. 
+
+## Logistic Regression model
+
+__Logistic Regression:__
+```{r Logistic Regression model, echo=FALSE}
+
+model <- glm (TARGET ~ .-X, data = feature_train, family = binomial)
+summary(model)
+
+pdata <- predict(model, type = "response")
+
+conf_matrix_train1 <-table(feature_train$TARGET, pdata > 0.5)
+
+print("Train Confusion matrix:")
+conf_matrix_train1
+
+train_res1 <- epi.tests(conf_matrix_train1, conf.level = 0.95)
+
+print("Overall train resultS:")
+train_res1
+
+train_rate <- sum(diag(conf_matrix_train1)) / sum(conf_matrix_train1)
+print(paste0("Train accuracy rate: ", train_rate))
+
+train_error <- 1 - train_rate
+print(paste0("Train error rate: ", train_error))
+
+
+pdata_test <- predict(model, feature_test, type = "response")
+
+conf_matrix_test1 <- table(feature_test$TARGET, pdata_test > 0.5)
+
+print("Test Confusion matrix:")
+conf_matrix_test1
+
+test_res1 <- epi.tests(conf_matrix_test1, conf.level = 0.95)
+
+print("Overall test resultS:")
+test_res1
+
+test_rate <- sum(diag(conf_matrix_test1)) / sum(conf_matrix_test1)
+print(paste0("Test accuracy rate: ", test_rate))
+test_error <- 1 - test_rate
+print(paste0("Test error rate: ", test_error))
+
+ROCRpred1 <- prediction(pdata_train, feature_train$TARGET)
+ROCRperf <- performance(ROCRpred1, 'tpr','fpr')
+plot(ROCRperf, colorize = TRUE, print.cutoffs.at=seq(0,1,by=0.1), text.adj = c(-0.2,1.7), main="AUC-ROC for Logistic Regression")
+
+
+```
+
+From the above results of the Logistic Regression model, we observe that the train accuracy is 92.7% and the test accuracy is 92.5%. This shows that there is neither any overfitting nor underfitting in the model. This is therefore a good model, which can be used. However, the Sensitivity is very high for the test dataset, around 0.93. The sensitivity would be more important in the case when we have to identify the positives and the positives in this case is the TARGET = FALSE, where the client does not have any payment difficulties. The Specificity on the other hand is 0.5 for the test and 0.35 for the train and this is a cause of concern because in our case, identifying the negatives is more important that is TARGET = TRUE, which indicates that the client does have payment difficulties. The specificity of 0.35 indiates that 35% of the people who have payment difficulties are correctly identified. Hence, I have tried other classification algorithms to increase the specificity. 
+
+The AUC curve shows that the model is doing a good job in giving the predictions for the TRUE positive rate, which in ths case, it is correctly able to identify clients who do not have payment difficulties.
+
+
+## Naive Bayes model
+
+I run the Naive Bayes to try aand increase the specificity value. 
+
+__Naive Bayes:__
+```{r naivebayes}
+feature.nb <- naiveBayes(TARGET ~ .-X, data = feature_train)
+feature.nb
+```
+
+__Naive Bayes Prediction:__
+```{r predictions}
+# probabilities
+pred.prob <- predict(feature.nb, feature_test, type = "raw")
+  # class membership
+pred.class <- predict(feature.nb, feature_test)
+
+pred.class1 <- predict(feature.nb, feature_train)
+
+  # Data frame with actual and predicted values
+df <- data.frame(feature_test$TARGET, pred.class, pred.prob)
+```
+
+__Naive Bayes Prediction Result:__
+```{r Naive Bayes Confusion Matrix}
+# probabilities
+conf_matrix_train2 <-table(pred.class1, feature_train$TARGET)
+
+print("Train Confusion matrix:")
+conf_matrix_train2
+
+train_rate <- sum(diag(conf_matrix_train2)) / sum(conf_matrix_train2)
+print(paste0("Train accuracy rate: ", train_rate))
+
+train_error <- 1 - train_rate
+print(paste0("Train error rate: ", train_error))
+
+train_res2 <- epi.tests(conf_matrix_train2, conf.level = 0.95)
+
+print("Overall train resultS:")
+train_res2
+
+conf_matrix_test2 <-table(pred.class, feature_test$TARGET)
+
+print("Test Confusion matrix:")
+conf_matrix_test2
+
+test_rate <- sum(diag(conf_matrix_test2)) / sum(conf_matrix_test2)
+print(paste0("Test accuracy rate: ", test_rate))
+
+test_error <- 1 - test_rate
+print(paste0("Test error rate: ", test_error))
+
+test_res2 <- epi.tests(conf_matrix_test2, conf.level = 0.95)
+
+print("Overall train resultS:")
+test_res2
+
+```
+ From the above Naive Bayes model, I have achieved a net test and train accuracy of 79%. Even this model beither does overfit nor underfit. But as a whole, the overall accuracy is much lesser than the logistic regression model. The specificity has also not decreased. Hence the Logistic regression model should be preferred over this model.  
+
+## SVM- Radial Kernel model
+
+I have then run the SVM model with a radial Kernel using a Cost value of 0.01. I have not used the tuning function in this case owing to the computation time.  
+
+__SVM Radial Kernel:__
+
+```{r SVM radial cost }
+svm1 <- svm(TARGET~.-X, data=feature_train, kernel = "radial", cost = 0.01)
+```
+
+__SVM Radial Kernel confusion matrix:__
+```{r SVM confusion matrix }
+summary(svm1)
+
+pred_train <- predict(svm1, feature_train)
+conf_matrix_train3 <- table(pred_train, feature_train$TARGET)
+
+print(paste0("Train confidence Matrix: "))
+conf_matrix_train3
+
+train_rate <- sum(diag(conf_matrix_train3)) / sum(conf_matrix_train3)
+
+
+print(paste0("Train accuracy rate: ", train_rate))
+
+train_error <- 1 - train_rate
+print(paste0("Train error rate: ", train_error))
+
+pred_test <- predict(svm1, feature_test)
+
+conf_matrix_test3 <- table(pred_test, feature_test$TARGET)
+print(paste0("Test confidence Matrix: "))
+conf_matrix_test3
+
+test_rate <- sum(diag(conf_matrix_test3)) / sum(conf_matrix_test3)
+print(paste0("Test accuracy rate: ", test_rate))
+
+test_error <- 1 - test_rate
+print(paste0("Test error rate: ", test_error))
+```
+
+__SVM Radial Kernel confusion matrix Results:__
+```{r SVM confusion matrix result}
+train_res2 <- epi.tests(conf_matrix_train3, conf.level = 0.95)
+
+print("Overall SVM train resultS:")
+train_res2
+
+test_res2 <- epi.tests(conf_matrix_test3, conf.level = 0.95)
+
+print("Overall SVM test resultS:")
+test_res2
+```
+
+Based on the above results, it is observed that the SVM kernel even though gives a net accuray from the train and test dataset of 92%. It is in no way a good model as the specificity is 0. It predicts all the variables as FALSE and this is a big risk. People who have payment difficulties are still predicted as FALSE and this way, we will not be able to detect the risk of customers who have payment difficulties.  
+
+## Ensemble Learning: 
+
+I have used 3 different Ensemble Learning methods to build a set of models to acheive the best possible prediction. 
+
+# Bagging Model
+
+I have run the bagging model combining a set of algorithms - RandomForest, svmRadial, xgbTree, glm and KNN.    
+
+__Bagging Model:__
+```{r Ensemble Learning Methods- Bagging}
+seed <- 999
+metric <- "Accuracy"
+
+# Bagging Algorithm 
+# Parameters used to control the model training process are defined in trainControl method
+bagcontrol <- trainControl(sampling="rose",method="repeatedcv", number=5, repeats=3, savePredictions = "final", allowParallel = TRUE)
+set.seed(seed)
+#Ensemble traing model
+ensemble_fit <- train(TARGET~.-X, data=feature_train, methodList=c("svmRadial", "rf", 
+      "xgbTree", "glm", "knn"), metric=metric, trControl=bagcontrol)
+```
+
+__Bagging Model Confusion Matrix:__
+```{r Ensemble Learning Bagging confusion matrix}
+#Evaluate on test set
+pred <- predict(ensemble_fit, newdata=feature_test)
+pred1 <- predict(ensemble_fit, newdata=feature_train)
+conf_matrix_train4 <- table(pred1, feature_train$TARGET)
+
+print(paste0("Train confidence Matrix: "))
+conf_matrix_train4
+
+train_rate <- sum(diag(conf_matrix_train4)) / sum(conf_matrix_train4)
+
+
+print(paste0("Train accuracy rate: ", train_rate))
+
+train_error <- 1 - train_rate
+print(paste0("Train error rate: ", train_error))
+
+conf_matrix_test4 <- table(pred, feature_test$TARGET)
+print(paste0("Test confidence Matrix: "))
+conf_matrix_test4
+
+test_rate <- sum(diag(conf_matrix_test4)) / sum(conf_matrix_test4)
+print(paste0("Test accuracy rate: ", test_rate))
+
+test_error <- 1 - test_rate
+print(paste0("Test error rate: ", test_error))
+
+train_res3 <- epi.tests(conf_matrix_train4, conf.level = 0.95)
+
+print("Overall Bagging train resultS:")
+train_res3
+
+test_res3 <- epi.tests(conf_matrix_test4, conf.level = 0.95)
+
+print("Overall Bagging test resultS:")
+test_res3
+```
+
+Based on the above results, the overall test accuracy is 42.4% and mainly the specificity has not at all decreased. The overall acuracy is much lower and hence, should not be considered.  
+
+# Gradient Boosting Model
+
+I have run a gradient boosting model with 5 cv folds.  
+
+__Gradient Boosting Model:__
+```{r Ensemble Learning Methods- Gradient Boosting}
+boostcontrol <- trainControl(sampling="rose",method="repeatedcv", number=5, repeats=2)
+set.seed(seed)
+fit.gbm <- train(TARGET~.-X, data=feature_train, method="gbm", metric=metric, trControl=boostcontrol, verbose=FALSE)
+```
+
+
+```{r Ensemble Learning Methods- Gradient Boosting predict result}
+# evaluate results on test set
+pred <- predict(fit.gbm, newdata=feature_test)
+confusionMatrix(data = pred, reference = feature_test$TARGET)
+```
+
+From the above model, it is observed that the overall accuracy is very low a mere 8% on the test set. But, the specificity is very high and it is correctly predicting people who have payment difficulties correctly. The overall specificity on the test dataset is 0.98 and this means that 98% of the people with payment difficulty are being correctly identified. But as a whole, the accuracy is much lower. 
+
+# Stacking Model
+
+I have run a stacking model with 3 different algorithms - KNN, GLM and rpart. I have used these and then seen which amongst these give the best prediction.   
+
+__Stacking Model:__
+```{r Ensemble Learning Stacking Algorithm}
+control <- trainControl(sampling="rose",method="repeatedcv", number=5, repeats=2, savePredictions=TRUE, classProbs=TRUE)
+algorithmList <- c( 'knn','glm','rpart')
+set.seed(seed)
+stack_models <- caretList(TARGET~.-X, data=feature_train, trControl=control, methodList=algorithmList)
+stacking_results <- resamples(stack_models)
+```
+
+```{r Ensemble Learning Stacking Algorithm results}
+summary(stacking_results)
+dotplot(stacking_results)
+
+# Check correlation between models to ensure the results are uncorrelated and can be ensembled
+modelCor(stacking_results)
+splom(stacking_results)
+```
+
+From the above results, we can see that the GLM - logistic regression gives the best accuracy. 
+
+## Conclusion: 
+The best model from all the above is the logistic regression model. It achieves the best accuracy of 92% on the test dataset, but the Gradient Boosting model gives us a very high specificity of 98%. This is the trade-off. Even though, we are getting a 92% accuracy from Logistic regression, our main aim should be to identify the clients who have payment difficulties and the Gradient Boosting model does a better job in that. We need to take both models into account and gauge the overall performance to clearly identify the clients based on the risk factors.    
+
