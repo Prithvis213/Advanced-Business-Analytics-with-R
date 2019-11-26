@@ -10,3 +10,7 @@ based on a variety of alternative data. I am using data from a Kaggle competitio
 an NBFC (Non-Banking Financial Company) based in the European Union.
 
 The first part was the feature Engineering to gather the data together and obtain the final feature matrix. 
+
+The second part was building the Machine Learning models to gain the best predictions. 
+
+I have finally summarized the entire project in the project report. 
